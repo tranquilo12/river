@@ -6,7 +6,8 @@ const tslib_1 = require("tslib");
 const crypto_1 = tslib_1.__importDefault(require("crypto"));
 const events_1 = require("events");
 // const ws_1 = tslib_1.__importDefault(require("ws"));
-const ws_1 = tslib_1.__importDefault(require("isomorphic-ws"));
+// const ws_1 = tslib_1.__importDefault(require("isomorphic-ws"));
+const ws_1 = require("isomorphic-ws");
 const constants_1 = require("./constants");
 const proto_1 = require("./modules/proto");
 const helpers_1 = require("../util/helpers");
@@ -25,16 +26,6 @@ const defaultReconnectOpts = {
 };
 // Amount to increase backoff every unsuccessful reconnect attempt
 const backoffIncrementSecs = 0.5;
-// Generate a nonce for api authentication
-function getNonce() {
-    return String(new Date().getTime() * 1000 * 1000);
-}
-// Generate a token for api authentication
-function getToken(key, secret, nonce) {
-    const hmac = crypto_1.default.createHmac('sha512', Buffer.from(secret, 'base64'));
-    hmac.update(`stream_access;access_key_id=${key};nonce=${nonce};`);
-    return hmac.digest('base64');
-}
 class WebSocketClient extends events_1.EventEmitter {
     // Default to defaultOptions
     constructor(opts) {
@@ -62,6 +53,18 @@ class WebSocketClient extends events_1.EventEmitter {
         this.connState = constants_1.StateDisconnected;
         this.subscriptions = {};
     }
+    // Generate a nonce for api authentication
+    getNonce() {
+        return String(new Date().getTime() * 1000 * 1000);
+    }
+
+    // Generate a token for api authentication
+    getToken(key, secret, nonce) {
+        const hmac = crypto_1.default.createHmac('sha512', Buffer.from(secret, 'base64'));
+        hmac.update(`stream_access;access_key_id=${key};nonce=${nonce};`);
+        return hmac.digest('base64');
+    }
+
     connect() {
         logger_1.default.debug('connecting to %s', this.opts.creds.url);
         this.changeState(constants_1.StateConnecting);
@@ -94,13 +97,15 @@ class WebSocketClient extends events_1.EventEmitter {
         logger_1.default.debug('connecting to %s', this.opts.creds.url);
         this.changeState(constants_1.StateConnecting);
         this.reconnectDisabled = false;
-        this.conn = new ws_1.default(this.opts.creds.url);
-        
-        this.conn.onopen = function open() {
-            this.authenticate();
-        };
+        this.conn = new ws_1(this.opts.creds.url);
 
-        this.conn.onmessage = function incoming(data){
+        // this.conn.onopen = function (data) {
+        //     this.authenticate();
+        // };
+
+        this.conn.onopen = this.authenticate();
+
+        this.conn.onmessage = function (data) {
             // Heartbeat
             // const bytes = new Uint8Array(data);
             if (data.length === 1 && data[0] === 1) {
@@ -110,18 +115,18 @@ class WebSocketClient extends events_1.EventEmitter {
             this.emit(constants_1.EventWSData, data);
         };
 
-        this.conn.onerror = function error() {
+        this.conn.onerror = function () {
             this.error('Connection failed');
         };
-        
-        this.conn.onclose = function close() {
+
+        this.conn.onclose = function () {
             this.changeState(constants_1.StateDisconnected);
             if (this.opts.reconnect.enabled && !this.reconnectDisabled) {
                 this.reconnect();
             }
         };
     }
-    
+
     error(e) {
         logger_1.default.error(e);
         this.emit(constants_1.EventClientError, e);
@@ -163,14 +168,14 @@ class WebSocketClient extends events_1.EventEmitter {
     }
     authenticate() {
         // The client should never supply its own nonce, this is just for tests
-        const nonce = this.opts.nonce ? this.opts.nonce : getNonce();
+        const nonce = this.opts.nonce ? this.opts.nonce : this.getNonce();
         const authMsg = proto_1.ProtobufClient.ClientMessage.create({
             apiAuthentication: proto_1.ProtobufClient.APIAuthenticationMessage.create({
                 apiKey: this.opts.creds.apiKey,
                 clientSubscriptions: this.getSubscriptions(),
                 nonce,
                 source: proto_1.ProtobufClient.APIAuthenticationMessage.Source.NODE_SDK,
-                token: getToken(this.opts.creds.apiKey, this.opts.creds.secretKey, nonce),
+                token: this.getToken(this.opts.creds.apiKey, this.opts.creds.secretKey, nonce),
                 version: version_1.default
             })
         });
