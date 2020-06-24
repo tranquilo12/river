@@ -10,3 +10,5 @@ declare module "assets/cw_config.json" {
 	const data: any;
 	export default data;
 }
+
+declare module "vue-native-websocket";

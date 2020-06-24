@@ -5,6 +5,8 @@
 </template>
 
 <script lang="ts">
+import "setimmediate";
+// import VueNativeSock from "vue-native-websocket";
 import * as config from "../assets/cw_config.json";
 import { Component, Prop, Vue } from "vue-property-decorator";
 import { StreamClient } from "cw-sdk-node";
@@ -26,51 +28,46 @@ export default class Component2 extends Vue {
 		return streamClient;
 	}
 
+	isEmpty(obj: any) {
+		return Object.keys(obj).length === 0;
+	}
+
+	// setNewConnect(StreamClient: any) {}
+
 	serializeMarketData(marketData: any) {
-		// instantiate local vars
-		let totalTradesLen = 0;
-		const externalID = [];
-		const tsArr = [];
-		const priceArr = [];
-		const amountArr = [];
+		const finalArr = [];
 
-		// try to get all ducks in line
-		try {
-			for (const idx in marketData.trades) {
-				tsArr.push(marketData.trades[idx].timestamp);
-				priceArr.push(marketData.trades[idx].price);
-				amountArr.push(marketData.trades[idx].amount);
-				externalID.push(marketData.trades[idx].externalID);
-				totalTradesLen += 1;
+		if (this.isEmpty(marketData)) {
+			console.log("marketData is Empty...");
+		} else {
+			try {
+				for (const idx in marketData.trades) {
+					finalArr.push({
+						marketID: marketData.market.id,
+						exchangeID: marketData.market.exchangeID,
+						currencyPairID: marketData.market.currencyPairID,
+						externalID: marketData.trades[idx].externalID,
+						timestamp: marketData.trades[idx].timestamp.toJson(),
+						side: marketData.trades[idx].side,
+						price: marketData.trades[idx].price,
+						amount: marketData.trades[idx].amount
+					});
+				}
+			} catch (e) {
+				console.log(e);
 			}
-		} catch (e) {
-			console.log(e);
 		}
-
-		return [
-			Array.from({
-				length: totalTradesLen
-			}).fill([marketData.market.id]),
-			Array.from({
-				length: totalTradesLen
-			}).fill([marketData.market.exchangeID]),
-			Array.from({
-				length: totalTradesLen
-			}).fill([marketData.market.currencyPairID]),
-			tsArr,
-			priceArr,
-			amountArr,
-			externalID
-		];
+		return finalArr;
 	}
 
 	showMe() {
 		const client = this.getClient();
+
 		client.onMarketUpdate((marketData: any) => {
 			console.log(this.serializeMarketData(marketData));
 		});
 
-		client.connect();
+		client.connect2();
 	}
 }
 </script>
